@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stagetool</title>
+<style>
+  /* CSS baseline adapted from tools/worldtool/index.html, with the sdftool's
+     folded-help and scrub-field conventions. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; display: flex; height: 100vh; font: 13px/1.4 system-ui, sans-serif;
+         background: #1a1c20; color: #cfd3da; overflow: hidden; }
+  #left { width: 178px; flex-shrink: 0; padding: 10px; display: flex; flex-direction: column;
+          gap: 6px; border-right: 1px solid #333; overflow-y: auto; }
+  #middle { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #center { flex: 1; overflow: hidden; display: flex; min-width: 0; min-height: 0; }
+  #picker { position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            display: grid; place-items: center; z-index: 9; }
+  #picker-grid { display: flex; flex-wrap: wrap; gap: 10px; align-content: start;
+                 max-width: 70vw; max-height: 70vh; overflow: auto;
+                 background: #1a1c20; border: 1px solid #444; border-radius: 6px;
+                 padding: 14px; }
+  .pick-card { display: flex; flex-direction: column; align-items: center; gap: 4px;
+               padding: 6px; border: 1px solid #333; border-radius: 4px;
+               cursor: pointer; font-size: 11px; color: #8a919d; }
+  .pick-card:hover { border-color: #4af; color: #cfd3da; }
+  .pick-card canvas { image-rendering: pixelated; }
+  #divider { width: 5px; flex-shrink: 0; cursor: col-resize; background: #333; touch-action: none; }
+  #divider:hover { background: #4af; }
+  #right { width: 340px; flex-shrink: 0; padding: 10px; display: flex; flex-direction: column;
+           gap: 8px; overflow-y: auto; }
+  /* Both panels are flex COLUMNS that scroll. Without this every child is
+     shrinkable, so the sprite palette and the map get squeezed to a sliver by
+     whatever is below them instead of the panel scrolling. */
+  #left > *, #right > * { flex-shrink: 0; }
+  button { background: #2a2e35; color: inherit; border: 1px solid #444; border-radius: 4px;
+           padding: 4px 8px; cursor: pointer; }
+  button:hover { border-color: #4af; }
+  button.active { background: #4af; color: #000; border-color: #4af; }
+  h3 { margin: 6px 0 2px; font-size: 11px; text-transform: uppercase; color: #8a919d; }
+  input[type=number] { width: 56px; background: #2a2e35; color: inherit;
+                       border: 1px solid #444; border-radius: 3px; padding: 2px 4px;
+                       cursor: ew-resize; appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+  /* A focused field IS a text box — see tools/sdftool/numfield.js. */
+  input[type=number]:focus { cursor: text; border-color: #4af; }
+  input[type=text] { background: #2a2e35; color: inherit; border: 1px solid #444;
+                     border-radius: 3px; padding: 3px 6px; width: 110px; }
+  select { background: #2a2e35; color: inherit; border: 1px solid #444; border-radius: 3px;
+           max-width: 100%; }
+  #display { image-rendering: pixelated; cursor: crosshair; margin: auto;
+             background: #101216; }
+  body.playing #display { cursor: none; }
+  #palette { display: flex; flex-wrap: wrap; gap: 4px; max-height: 24vh; overflow: auto;
+             border: 1px solid #333; border-radius: 4px; padding: 4px; align-content: start; }
+  .sprite-card { border: 1px solid #333; border-radius: 3px; padding: 2px; cursor: pointer;
+                 line-height: 0; }
+  .sprite-card:hover { border-color: #4af; }
+  .sprite-card.armed { border-color: #4af; background: #234; }
+  .sprite-card.variant { border-color: #fd4; background: #332a12; }
+  .sprite-card img, .sprite-card canvas { image-rendering: pixelated; display: block; }
+  #sheet-list, #object-kv { width: 100%; font-size: 11px; }
+  /* The stamp list is windowed (see rebuildStampList): the scroller holds one
+     spacer of the full height and only the rows in view. */
+  #stamp-list { width: 100%; font-size: 11px; height: 22vh; min-height: 90px;
+                overflow-y: auto; position: relative; }
+  #stamp-rows { position: absolute; left: 0; right: 0; }
+  .op-row { display: flex; justify-content: space-between; padding: 2px 6px; cursor: pointer;
+            font-family: ui-monospace, monospace; font-size: 11px; white-space: nowrap;
+            height: 18px; align-items: center; }
+  .op-row:hover { background: #2a2e35; }
+  .op-row.selected { background: #234; outline: 1px solid #4af; }
+  .op-row.locked { opacity: .5; cursor: default; }
+  .op-row button { padding: 0 4px; font-size: 10px; }
+  .op-row span:first-child { overflow: hidden; text-overflow: ellipsis; }
+
+  /* --- planes ------------------------------------------------------------ */
+  #planes { display: flex; flex-direction: column; gap: 2px; }
+  .plane-row { display: flex; align-items: center; gap: 3px; padding: 2px 3px;
+               border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+  .plane-row:hover { background: #22262c; }
+  .plane-row.active { border-color: #4af; background: #1e2833; }
+  .plane-row.off { opacity: .45; }
+  .plane-row button { padding: 0 3px; font-size: 10px; line-height: 16px; }
+  .plane-rate { font-family: ui-monospace, monospace; font-size: 10px; min-width: 38px;
+                border-left-width: 3px !important; }
+  .plane-rate.solo { background: #4af; color: #000; }
+  .plane-name { flex: 1; min-width: 0; width: auto !important; font-size: 11px;
+                padding: 1px 4px !important; }
+  .plane-count { min-width: 26px; font-family: ui-monospace, monospace; font-size: 10px; }
+  /* Where the game draws its actors. Editor-only — a game passes the number
+     to drawStage itself — but it is the one thing about a layer stack you
+     cannot work out by looking at it. */
+  .split-row { font-family: ui-monospace, monospace; font-size: 9px; color: #6c737f;
+               text-align: center; padding: 1px 0; letter-spacing: .5px; }
+
+  /* --- overview map ------------------------------------------------------ */
+  #overview { width: 100%; height: 96px; border: 1px solid #333; border-radius: 4px;
+              cursor: crosshair; display: block; background: #141619; touch-action: none; }
+
+  /* --- status bar --------------------------------------------------------
+     ITS HEIGHT IS FIXED. It sits under the canvas, so a readout that wrapped
+     to a second line would shrink #center — and the viewport's size is what
+     state.origin (the centered camera pane) is computed from, so the whole
+     picture would shift under the cursor mid-edit. Every child is one
+     clipped line. */
+  #statusbar { flex-shrink: 0; height: 22px; display: flex; align-items: center;
+               gap: 12px; padding: 0 8px; border-top: 1px solid #333;
+               background: #16181c; overflow: hidden;
+               font-family: ui-monospace, monospace; font-size: 11px; color: #8a919d; }
+  #statusbar > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                   flex-shrink: 0; }
+  #statusbar .grow { flex: 1 1 auto; min-width: 0; }
+  #statusbar button { padding: 0 6px; font-size: 11px; line-height: 16px; }
+  #coords { min-width: 108px; }
+  #selread { max-width: 34%; }
+
+  #inspector { display: flex; flex-wrap: wrap; gap: 4px; }
+  #inspector label { display: inline-flex; flex-direction: column; font-size: 10px; color: #8a919d; }
+  #object-kv input[type=text] { width: 90px; }
+  #object-kv input[type=number] { width: 60px; }
+  #bytes, #stats { color: #8a919d; font-family: ui-monospace, monospace; font-size: 11px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .hint { color: #6c737f; font-size: 10px; line-height: 1.35; }
+  .warn { color: #e5a55a; }
+  .toolpanel { display: flex; flex-direction: column; gap: 6px; }
+
+  /* Help is folded away: documentation that pushes the controls off the pane
+     has cost more than it taught (the sdftool's rule). */
+  details.help > summary { list-style: none; cursor: pointer; color: #5a616c;
+                           font-size: 10px; margin: 1px 0 4px; }
+  details.help > summary::-webkit-details-marker { display: none; }
+  details.help > summary::before { content: '? what does this do'; }
+  details.help[open] > summary::before { content: '? hide'; }
+  details.help > summary:hover { color: #8a919d; }
+  details > summary { cursor: pointer; color: #8a919d; font-size: 11px;
+                      text-transform: uppercase; margin: 6px 0 2px; }
+
+  /* --- shortcut sheet ---------------------------------------------------- */
+  #keysheet { position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 20;
+              display: grid; place-items: center; }
+  .keysheet-box { background: #1a1c20; border: 1px solid #444; border-radius: 6px;
+                  padding: 16px 20px; max-height: 84vh; overflow: auto;
+                  columns: 2; column-gap: 32px; font-size: 12px; }
+  .keysheet-box h3 { break-after: avoid; }
+  .keyrow { display: flex; gap: 10px; break-inside: avoid; padding: 1px 0; }
+  .keyrow kbd { font-family: ui-monospace, monospace; color: #cfd3da; background: #2a2e35;
+                border: 1px solid #444; border-radius: 3px; padding: 0 5px;
+                min-width: 152px; font-size: 11px; }
+  .keyrow span { color: #8a919d; }
+</style>
+</head>
+<body>
+  <div id="left">
+    <h3>Tools</h3>
+    <div class="row">
+      <button id="tool-select" title="select / move (1)">select</button>
+      <button id="tool-stamp" title="place the armed sprite (2)">stamp</button>
+    </div>
+    <div class="row">
+      <button id="tool-aabb" title="drag out a collision box (3)">aabb</button>
+      <button id="tool-object" title="place a KV-tagged object (4)">object</button>
+    </div>
+    <div class="row">
+      <button id="tool-tile" title="paint collision on a grid, baked to AABBs (5)">tile</button>
+      <button id="tool-play" title="playtest from the cursor (P)">▶ play</button>
+    </div>
+
+    <!-- ===== contextual tool options ===== -->
+    <div class="toolpanel" data-tool="stamp">
+      <h3>Armed stamp</h3>
+      <div id="arm-info" class="hint"></div>
+      <div id="arm-layer" class="hint"></div>
+      <label title="mirror horizontally (X)"><input id="arm-fx" type="checkbox">flip</label>
+      <div class="row">
+        <label title="0 = the sprite's own width">gap
+          <input id="paint-spacing" type="number" min="0" max="512" step="1"></label>
+        <button id="variants-clear" title="empty the variant brush">clear variants</button>
+      </div>
+      <div id="variant-info" class="hint"></div>
+      <details class="help"><summary></summary>
+        <div class="hint">Click a palette sprite to arm it. <b>Shift-click</b> adds it to
+          the variant brush, and each placement then picks one at random.</div>
+        <div class="hint">A stamp has no rate and no depth of its own: it lands on the
+          <b>armed layer</b>, which owns both. Pick one in the Layers panel.</div>
+        <div class="hint"><b>Drag</b> to lay a run of stamps, one every `gap` px.</div>
+        <div class="hint"><b>Alt+click</b> a placed stamp to take its sprite, rate,
+          depth and flip.</div>
+      </details>
+    </div>
+
+    <div class="toolpanel" data-tool="aabb">
+      <h3>AABB</h3>
+      <div class="row">
+        <label>type <input id="aabb-type" type="number" min="0" max="255" step="1"></label>
+        <input id="aabb-type-name" type="text" spellcheck="false" placeholder="name" style="width:78px">
+      </div>
+      <div class="hint">drag a corner handle to resize a selected box</div>
+    </div>
+
+    <div class="toolpanel" data-tool="tile">
+      <h3>Tile</h3>
+      <div class="row">
+        <label>size <select id="tile-size">
+          <option value="4">4</option><option value="8">8</option>
+          <option value="16">16</option><option value="32">32</option>
+        </select></label>
+        <label title="any cell size, not just the presets"><input id="tile-size-custom" type="number" min="1" step="1"></label>
+      </div>
+      <div class="row">
+        <label title="world px of cell (0,0) — wraps into [0, size)">origin x
+          <input id="tile-origin-x" type="number" step="1"></label>
+        <label>origin y <input id="tile-origin-y" type="number" step="1"></label>
+      </div>
+      <label>type <input id="tile-type" type="number" min="0" step="1"></label>
+      <div class="row">
+        <button id="tile-absorb" title="turn grid-aligned AABBs into painted cells">absorb boxes</button>
+        <label title="click an empty cell to flood the region it is in">
+          <input id="tile-fill" type="checkbox">fill</label>
+      </div>
+      <div id="tile-stats" class="hint"></div>
+      <div class="hint">drag paints · right-click or Ctrl erases · Shift
+        drags a rectangle fill · bakes to AABBs when you release</div>
+    </div>
+
+    <div class="toolpanel" data-tool="object">
+      <h3>Object</h3>
+      <div class="hint">click to drop a marker, then give it a sprite and KV pairs
+        in the Selection panel.</div>
+    </div>
+
+    <div class="toolpanel" data-tool="select">
+      <h3>Arrange</h3>
+      <div class="row">
+        <button id="al-left" title="align left edges">⇤</button>
+        <button id="al-hcenter" title="align horizontal centers">↔</button>
+        <button id="al-right" title="align right edges">⇥</button>
+        <button id="al-top" title="align top edges">⤒</button>
+        <button id="al-vcenter" title="align vertical centers">↕</button>
+        <button id="al-bottom" title="align bottom edges">⤓</button>
+      </div>
+      <div class="row">
+        <button id="dist-x" title="even horizontal gaps (3+ items)">spread x</button>
+        <button id="dist-y" title="even vertical gaps (3+ items)">spread y</button>
+      </div>
+      <h3>Repeat</h3>
+      <div class="row">
+        <label>n <input id="rep-n" type="number" min="1" max="200" step="1" value="4" style="width:44px"></label>
+        <label>dx <input id="rep-dx" type="number" step="1" value="0" style="width:52px"></label>
+        <label>dy <input id="rep-dy" type="number" step="1" value="0" style="width:52px"></label>
+      </div>
+      <div class="row">
+        <button id="rep-go" title="duplicate the selection n times (Ctrl+D)">repeat</button>
+        <button id="rep-span" title="set dx/dy to the selection's own size">use size</button>
+      </div>
+      <h3>Order</h3>
+      <div class="hint">draw order is list order, within a layer</div>
+      <div class="row">
+        <button id="ord-back" title="all the way back ([)">⤒ back</button>
+        <button id="ord-down" title="one step back">↑</button>
+        <button id="ord-up" title="one step forward">↓</button>
+        <button id="ord-front" title="all the way forward (])">⤓ front</button>
+      </div>
+      <h3>Select more</h3>
+      <div class="row">
+        <button id="sel-sprite" title="every stamp with the same sprite">same sprite</button>
+        <button id="sel-layer" title="every stamp on the same layer">same layer</button>
+      </div>
+      <button id="box-stamps" title="one collision box per selected stamp, at its bounds (B)">box stamps</button>
+    </div>
+
+    <h3>View</h3>
+    <div class="row">
+      <label>zoom <select id="zoom">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+        <option value="1">1×</option>
+        <option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
+      </select></label>
+    </div>
+    <div class="row">
+      <button id="fit-stage" title="fit the whole stage (Shift+F)">fit</button>
+      <button id="fit-sel" title="frame the selection (F)">frame</button>
+      <button id="go-origin" title="camera to 0,0 (Home)">origin</button>
+    </div>
+    <label>snap <select id="snap">
+      <option value="1">off</option><option value="4">4</option>
+      <option value="8">8</option><option value="16">16</option><option value="32">32</option>
+    </select></label>
+    <label title="while placing, snap to the edges/corners of nearby same-rate stamps — tile-map-like placement without a tilemap">
+      <input id="sprite-snap" type="checkbox">sprite snap</label>
+    <label title="hide the collision overlay on a busy stage">
+      <input id="show-aabbs" type="checkbox" checked>show collision</label>
+    <label title="hide objects and their labels">
+      <input id="show-objects" type="checkbox" checked>show objects</label>
+    <details><summary>layer filter</summary>
+      <div class="row">
+        <label title="first layer shown">l0 <input id="l0" type="number" min="0" step="1"></label>
+        <label title="one past the last layer shown">l1 <input id="l1" type="number" min="0" step="1"></label>
+      </div>
+      <label><input id="dim-others" type="checkbox" checked>dim out-of-range</label>
+      <div class="row">
+        <button id="layer-below" title="the layers the actors draw over">below split</button>
+        <button id="layer-above" title="the layers that draw over the actors">above split</button>
+        <button id="layer-all">all</button>
+      </div>
+    </details>
+    <details><summary>playtest</summary>
+      <div class="row">
+        <label>w <input id="play-w" type="number" min="1" max="128" step="1"></label>
+        <label>h <input id="play-h" type="number" min="1" max="128" step="1"></label>
+      </div>
+      <div class="row">
+        <label>gravity <input id="play-grav" type="number" min="0" max="4" step="0.05"></label>
+        <label>jump <input id="play-jump" type="number" min="0" max="32" step="0.5"></label>
+      </div>
+      <div class="row">
+        <label>speed <input id="play-speed" type="number" min="0" max="16" step="0.25"></label>
+        <label title="the collision type the body stands on">type
+          <input id="play-type" type="number" min="0" max="255" step="1"></label>
+      </div>
+      <div class="hint">P starts at the cursor · arrows/WASD move · space jumps
+        · click teleports the body · Esc exits</div>
+    </details>
+    <div class="row">
+      <button id="undo" title="Ctrl+Z">undo</button>
+      <button id="redo" title="Ctrl+Shift+Z">redo</button>
+    </div>
+  </div>
+
+  <div id="middle">
+    <div id="center"><canvas id="display"></canvas></div>
+    <div id="statusbar">
+      <span id="coords">0, 0</span>
+      <span id="zoomread">1×</span>
+      <span id="selread"></span>
+      <span id="status" class="grow"></span>
+      <button id="help-btn" title="shortcuts (?)">?</button>
+    </div>
+  </div>
+  <div id="divider" title="drag to resize"></div>
+
+  <div id="right">
+    <h3>Stage</h3>
+    <div class="row">
+      <button id="new" title="start a blank stage (confirms if unsaved)">new</button>
+      <input id="name" type="text" spellcheck="false">
+      <button id="save" title="Ctrl+S">save</button>
+      <button id="load-btn" title="open a saved stage">load…</button>
+      <!-- hidden selects stay as the programmatic load/add API (picker
+           clicks and the test suites both go through their change events) -->
+      <select id="load-select" style="display:none"></select>
+      <select id="sheet-select" style="display:none"></select>
+      <select id="object-src-select" style="display:none"></select>
+    </div>
+    <div id="bytes"></div>
+    <div id="stats"></div>
+
+    <h3>Map</h3>
+    <canvas id="overview" width="320" height="96"
+            title="click or drag to move the camera"></canvas>
+
+    <h3>Layers</h3>
+    <div id="layers"></div>
+    <div class="row">
+      <button id="layer-add" title="new layer just after the armed one">+ layer</button>
+      <button id="layer-del" title="remove the armed layer (must be empty)">✕</button>
+      <button id="layer-back" title="move the armed layer one back in draw order">↑</button>
+      <button id="layer-fwd" title="move the armed layer one forward in draw order">↓</button>
+    </div>
+    <div class="row">
+      <label title="parallax rate of the ARMED layer: 1 = gameplay plane, &lt;1 far, &gt;1 near">rate
+        <input id="layer-rate" type="number" min="0" max="8" step="0.05"></label>
+      <label title="the layer index the game passes to drawStage to split its actors">split
+        <input id="layer-split" type="number" min="0" step="1" style="width:44px"></label>
+      <button id="layers-all" title="unhide every layer and drop the solo">show all</button>
+      <span id="layer-solo-note" class="hint warn" style="display:none">soloed</span>
+    </div>
+
+    <h3>Sheets</h3>
+    <div class="row">
+      <button id="sheet-add-btn" title="add an SDF sheet (its models bake to sprites at boot)">+ sheet…</button>
+    </div>
+    <div id="sheet-list"></div>
+
+    <h3>Sprites</h3>
+    <input id="palette-search" type="text" spellcheck="false" placeholder="filter by name">
+    <div id="palette"></div>
+
+    <h3>Stamps</h3>
+    <div class="row">
+      <input id="stamp-filter" type="text" spellcheck="false" placeholder="filter" style="width:120px">
+      <select id="stamp-sort" title="row order">
+        <option value="draw">draw order</option>
+        <option value="place">list order</option>
+      </select>
+    </div>
+    <div id="stamp-list"><div id="stamp-rows"></div></div>
+    <details class="help"><summary></summary>
+      <div class="hint">click selects · Shift range-selects · Ctrl/Cmd toggles
+        · 🔒 protects a stamp from click/drag-select on the canvas or here</div>
+    </details>
+
+    <h3>Selection</h3>
+    <div id="inspector"></div>
+    <div id="object-panel" style="display:none;flex-direction:column;gap:6px">
+      <div class="row">
+        <button id="object-src-btn" title="give this object a sprite">sprite…</button>
+        <button id="object-src-clear" title="back to a logic-only marker">clear</button>
+      </div>
+      <table id="object-kv"><tr><th>key</th><th>value</th><th></th></tr></table>
+      <datalist id="object-keys"></datalist>
+      <button id="object-kv-add">+ kv</button>
+      <div class="row">
+        <select id="preset-select" title="apply a saved KV set"></select>
+        <button id="preset-save" title="save this object's KV set under a name">save preset</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/stagetool/main.js"></script>
+</body>
+</html>

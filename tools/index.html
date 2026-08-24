@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poopicorn tools</title>
+<!-- The dev server's landing page (tools/server.js serves this at /).
+     Palette copied from the editors' own inline styles rather than shared with
+     them: every tool page here is self-contained by design, and one shared
+     stylesheet would be the only file they all depend on. -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 24px 60px; font: 14px/1.5 system-ui, sans-serif;
+         background: #1a1c20; color: #cfd3da; }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; color: #eef1f5; }
+  h1 small { font-size: 13px; font-weight: 400; color: #7d8492; margin-left: 8px; }
+  .lede { margin: 0 0 28px; color: #98a0ac; max-width: 62ch; }
+  h2 { margin: 32px 0 10px; font-size: 11px; text-transform: uppercase;
+       letter-spacing: .08em; color: #7d8492; font-weight: 600; }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  a.card { display: block; padding: 12px 14px; text-decoration: none; color: inherit;
+           background: #22252b; border: 1px solid #383d46; border-radius: 6px; }
+  a.card:hover { border-color: #4af; background: #234; }
+  a.card:focus-visible { outline: 2px solid #4af; outline-offset: 2px; }
+  .name { font-size: 15px; font-weight: 600; color: #eef1f5; }
+  .path { font-family: ui-monospace, monospace; font-size: 12px; color: #4af; margin-left: 7px; }
+  .desc { margin-top: 4px; color: #98a0ac; font-size: 13px; }
+  .writes { margin-top: 6px; font-family: ui-monospace, monospace; font-size: 11px; color: #6c737f; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #2a2e35;
+           color: #6c737f; font-size: 12px; }
+  footer code { color: #98a0ac; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Poopicorn tools <small>dev server</small></h1>
+  <p class="lede">Authoring tools for this game's data. Everything here is
+  dev-only — none of it ships in the 13 KB zip. Each tool writes plain ES
+  modules into <code>src/js/</code>, which the game imports directly.</p>
+
+  <h2>Art &amp; world</h2>
+  <div class="grid">
+    <a class="card" href="/sdf">
+      <span class="name">SDFtool</span><span class="path">/sdf</span>
+      <div class="desc">3D assets from a handful of primitives — spheres, boxes,
+      capsules, tori, melted together and cut apart. Rendered at run time with
+      ambient occlusion, so a sprite that looks pre-rendered costs thirty
+      numbers. The sheet tab picks which models the game bakes, and at which
+      views — eight facings are one model at eight yaws. The anim tab poses one
+      model over time into a clip.</div>
+      <div class="writes">src/js/models/, src/js/sheets/, src/js/clips/</div>
+    </a>
+    <a class="card" href="/stage">
+      <span class="name">Stagetool</span><span class="path">/stage</span>
+      <div class="desc">The level editor: an unbounded plane of parallax layers
+      holding SDF sprite stamps, box collision and tagged objects.
+      <kbd>P</kbd> playtests a body against the real collision.</div>
+      <div class="writes">src/js/stages/</div>
+    </a>
+  </div>
+
+  <h2>Audio</h2>
+  <div class="grid">
+    <a class="card" href="/soundbox/">
+      <span class="name">Voxby</span><span class="path">/soundbox/</span>
+      <div class="desc">Synth music tracker — a few hundred bytes of song data
+      played back by a tiny runtime routine. Export JS, then
+      <code>npm run convert-song</code> into src/js/sounds/.</div>
+      <div class="writes">tools/soundbox/songs/</div>
+    </a>
+  </div>
+
+  <footer>
+    Started with <code>npm run tools</code>. One server backs every editor above,
+    plus the repo's <code>src/</code> tree and the save/list APIs they post to.
+  </footer>
+</main>
+</body>
+</html>

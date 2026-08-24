@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sdftool</title>
+<style>
+  /* Baseline adapted from tools/noodletool/index.html */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; display: flex; height: 100vh; font: 13px/1.4 system-ui, sans-serif;
+         background: #1a1c20; color: #cfd3da; }
+  #left { width: 180px; flex-shrink: 0; padding: 10px; display: flex; flex-direction: column;
+          gap: 6px; border-right: 1px solid #333; overflow-y: auto; }
+  #center { flex: 1; min-width: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: 10px; gap: 8px; }
+  #right { width: 260px; flex-shrink: 0; padding: 10px; display: flex; flex-direction: column;
+           gap: 6px; border-left: 1px solid #333; overflow-y: auto; }
+  button { background: #2a2e35; color: inherit; border: 1px solid #444; border-radius: 4px;
+           padding: 3px 7px; cursor: pointer; }
+  button:hover { border-color: #4af; }
+  h3 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; color: #8a919d; }
+  input[type=number] { width: 74px; background: #2a2e35; color: inherit;
+                       border: 1px solid #444; border-radius: 3px; padding: 2px 4px;
+                       cursor: ew-resize; appearance: textfield; }
+  /* No spin buttons. The press is captured for the scrub gesture so they never
+     did anything, and they ate 14px of a 74px field. */
+  input[type=number]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+  /* A focused field IS a text box — see numfield.js — so it says so. */
+  input[type=number]:focus { cursor: text; border-color: #4af; }
+  input[type=text] { background: #2a2e35; color: inherit; border: 1px solid #444;
+                     border-radius: 3px; padding: 3px 6px; width: 100%; }
+  select { background: #2a2e35; color: inherit; border: 1px solid #444; border-radius: 3px; }
+  /* A panel is 180-260px wide and a long option label must not widen it. */
+  select { max-width: 100%; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .num { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .hint { color: #6c737f; font-size: 10px; line-height: 1.35; }
+  /* The lights and the fog are folded away by default: they are set once for a
+     model, and the dials you shape a model with must stay at the top. */
+  details > summary { cursor: pointer; color: #8a919d; font-size: 11px;
+                      text-transform: uppercase; margin: 6px 0 2px; }
+  /* HELP IS FOLDED AWAY TOO, and for a harder reason: it is documentation, and
+     documentation that pushes the controls off the pane has cost more than it
+     taught. Every section's hints live behind its own `?`, each one remembers
+     whether you opened it, and the panel scrolls to the CONTROLS by default. */
+  details.help > summary { list-style: none; cursor: pointer; color: #5a616c;
+                           font-size: 10px; text-transform: none; margin: 1px 0 4px; }
+  details.help > summary::-webkit-details-marker { display: none; }
+  details.help > summary::before { content: '? what does this do'; }
+  details.help[open] > summary::before { content: '? hide'; }
+  details.help > summary:hover { color: #8a919d; }
+  details.help .hint + .hint { margin-top: 4px; }
+  .warn { color: #e5a55a; }
+  .checker { background: repeating-conic-gradient(#2a2e35 0% 25%, #23262c 0% 50%) 0 0/16px 16px; }
+  /* The picture fills the pane and is navigated inside it — tools/sdftool/
+     viewport.js owns the size and position of everything in here, at WHOLE
+     number scales only, because a resampled preview of a dithered indexed
+     image tells you nothing about the dither.
+
+     THE FRAME IS ON THE BOX, NOT ON THE CANVAS. `box-sizing: border-box` plus
+     a border on the canvas takes the border out of the picture's own width,
+     which quietly makes the scale fractional (480px with a 1px border is 478
+     content px for a 160px image = 2.9875x) and shifts the overlay a pixel off
+     the render it is annotating. */
+  #stage, #sheetstage { position: relative; flex: 1; width: 100%; overflow: hidden;
+                        border: 1px solid #333; }
+  /* The gestures listen on the PANE, because the overlay covers the pane and a
+     widget drawn outside the picture has to be grabbable — see initOrbit in
+     tools/sdftool/canvas.js. So the cursor and touch-action belong here too. */
+  #stage, #sheetstage { cursor: grab; touch-action: none; }
+  #display { image-rendering: pixelated; }
+  /* Visual only. The handles are hit-tested inside the display's own pointer
+     handler, so the overlay must never swallow an event. */
+  #overlay, #sheetoverlay { pointer-events: none; }
+  #status { color: #8a919d; font-family: ui-monospace, monospace; font-size: 11px; }
+  #tabs { gap: 4px; margin-bottom: 4px; }
+  .tab { flex: 1; }
+  .tab.on { background: #234; border-color: #4af; }
+  /* The sheet preview is the same viewport, over a different picture. */
+  #sheetdisplay { image-rendering: pixelated; }
+  #sprites { border: 1px solid #333; border-radius: 4px; max-height: 40vh; overflow: auto; }
+  #sstats { font-family: ui-monospace, monospace; }
+  .tomb { color: #6c737f; font-style: italic; }
+  /* An inherited dial is shown, not hidden: the value is real, it just is not
+     this sprite's. */
+  input.inherited { color: #6c737f; }
+  #bytes { color: #8a919d; font-family: ui-monospace, monospace; font-size: 11px; }
+  #files { max-height: 26vh; overflow: auto; border: 1px solid #333; border-radius: 4px; }
+  .file-row { padding: 2px 6px; cursor: pointer; font-family: ui-monospace, monospace;
+              font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-row:hover { background: #2a2e35; }
+  .file-row.current { background: #234; outline: 1px solid #4af; }
+  #parts { border: 1px solid #333; border-radius: 4px; max-height: 34vh; overflow: auto; }
+  .op-row { display: flex; align-items: center; gap: 5px; padding: 2px 4px;
+            font-family: ui-monospace, monospace; font-size: 11px; }
+  .op-row:hover { background: #2a2e35; }
+  .op-row.selected { background: #234; outline: 1px solid #4af; }
+  /* The one row the inspector edits, when several are selected. */
+  .op-row.anchor { outline-width: 2px; }
+  .op-row span:nth-child(2) { flex: 1; cursor: pointer; }
+  .op-row button { padding: 0 4px; font-size: 10px; line-height: 1.4; }
+  .chip { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #0006; flex-shrink: 0; }
+  #mats { display: flex; flex-wrap: wrap; gap: 4px; }
+  .swatch { width: 22px; height: 22px; padding: 0; border-radius: 3px; cursor: pointer; }
+  /* The material the selected part is using. Without this the palette gives no
+     answer to "which one is on right now". */
+  .swatch.on { outline: 2px solid #4af; outline-offset: 1px; }
+  /* the shared palette picker (tools/noodletool/picker.js) */
+  .picker-veil { position: fixed; inset: 0; z-index: 9; }
+  .picker-box { position: fixed; display: grid; gap: 0; padding: 8px;
+                background: #1a1c20; border: 1px solid #555; border-radius: 6px;
+                box-shadow: 0 6px 24px rgba(0,0,0,.6); }
+  .picker-box .swatch { width: 15px; height: 15px; border: 0; border-radius: 0; }
+  .picker-box .swatch:hover { outline: 2px solid #fff; outline-offset: -2px; z-index: 1; }
+  /* THE FILMSTRIP. Each cell shows the BAKED sprite at its real size, so what
+     you scrub through is what the game will draw — magnified by whole numbers
+     and never resampled, like every other picture in this tool. */
+  #astrip { display: flex; gap: 3px; overflow-x: auto; padding: 3px;
+            border: 1px solid #333; border-radius: 4px; max-width: 100%;
+            touch-action: none; user-select: none; }
+  #astrip .frame { position: relative; flex: 0 0 auto; padding: 2px; border-radius: 3px;
+                   border: 1px solid #333; background: #23262c; cursor: pointer; }
+  #astrip .frame canvas { display: block; image-rendering: pixelated; }
+  #astrip .frame span { position: absolute; left: 3px; top: 1px; font-size: 9px;
+                        color: #8a919d; text-shadow: 0 0 3px #000; pointer-events: none; }
+  #astrip .frame.on { border-color: #4af; background: #234; }
+  /* A frame a channel actually moves at. A clip whose middle is flat is a clip
+     with a hole in it, and the dot is how that is visible without scrubbing. */
+  #astrip .frame.keyed::after { content: ''; position: absolute; right: 3px; bottom: 2px;
+                                width: 4px; height: 4px; border-radius: 2px; background: #4af; }
+  #achannels, #agroups { border: 1px solid #333; border-radius: 4px; max-height: 34vh; overflow: auto; }
+  /* Membership is a checkbox per part and not a multi-select gesture: a group
+     is edited rarely and read often, and a list you can see is the readable
+     one. */
+  #amembers { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 4px; }
+  #amembers label { gap: 3px; }
+  input.chanval { width: 66px; }
+  #astats, #aframeno { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+  <div id="left">
+    <div class="row" id="tabs">
+      <button id="tab-model" class="tab on">model</button>
+      <button id="tab-sheet" class="tab">sheet</button>
+      <button id="tab-anim" class="tab">anim</button>
+      <!-- Both tabs render through it, so it sits with the tabs rather than in
+           either panel. The CPU renderer is the authority and the two agree to
+           within a dither step, so turning this off has to be possible. -->
+      <button id="gputoggle" class="tab" title="render on the GPU (tools/sdftool/glrender.js)">gpu</button>
+    </div>
+
+    <div class="model-only">
+    <h3>Model</h3>
+    <input id="name" type="text" spellcheck="false" placeholder="name">
+    <div class="row">
+      <button id="new" title="start again from one sphere">new</button>
+      <button id="save" title="write src/js/models/&lt;name&gt;.js">save</button>
+      <button id="undo" title="undo (ctrl+z)">undo</button>
+    </div>
+    <div id="bytes">—</div>
+    <div id="files"></div>
+
+    <h3>View</h3>
+    <div id="viewbox"></div>
+    <label class="num">preview
+      <select id="size">
+        <option value="96">96</option>
+        <option value="160" selected>160</option>
+        <option value="240">240</option>
+        <!-- 320 is a GPU size. On the CPU one frame of it is a third of a
+             second, which is what the draft resolution exists to hide. -->
+        <option value="320">320</option>
+      </select>
+    </label>
+    <details class="help" data-help="view"><summary></summary>
+      <div class="hint"><b>Drag the model</b> to move the selected part, in the
+        plane facing you. <b>Drag the background</b> — or shift-drag — to orbit.
+        The camera is orthographic, so a drag is exact.</div>
+      <div class="hint"><b>Wheel</b> zooms the picture, <b>middle-drag</b> or
+        <b>space-drag</b> pans it, <b>f</b> fits it to the pane. That is the
+        viewport, not the camera: it changes nothing in the file, and it only
+        ever scales by whole numbers.</div>
+    </details>
+
+    <h3>Materials</h3>
+    <div id="mats"></div>
+    <details class="help" data-help="materials"><summary></summary>
+      <div class="hint"><b>Click</b> a swatch to paint the selected part with it.
+        <b>Double-click</b> to change what that colour is — picked against the
+        real palette, because a colour the palette cannot represent is a colour
+        the render will not produce. <b>Shift-click</b> deletes it.</div>
+    </details>
+    </div>
+
+    <div class="sheet-only" hidden>
+    <h3>Sheet</h3>
+    <input id="sname" type="text" spellcheck="false" placeholder="name">
+    <div class="row">
+      <button id="snew" title="start an empty sheet">new</button>
+      <button id="ssave" title="write src/js/sheets/&lt;name&gt;.js">save</button>
+      <button id="sbake" title="render every sprite again">bake</button>
+      <button id="sfitall" title="crop every sprite to its art">fit all</button>
+    </div>
+    <div id="sbytes">—</div>
+    <div id="sfiles"></div>
+
+    <h3>Packing</h3>
+    <label class="num">width
+      <select id="swidth">
+        <option value="128">128</option>
+        <option value="256" selected>256</option>
+        <option value="512">512</option>
+      </select>
+    </label>
+    <div id="sstats" class="hint">—</div>
+    <details class="help" data-help="packing"><summary></summary>
+      <div class="hint"><b>Wheel</b> zooms, <b>middle-drag</b> or
+        <b>space-drag</b> pans, <b>f</b> fits. Whole-number scales only, so a
+        sprite's pixels stay square.</div>
+      <div class="hint">The layout is <b>not saved</b>: both bakers shelf-pack
+        from the sizes at boot, so a sheet file has no x/y in it. Width is what
+        the game passes to <code>sheetBaker</code>; ids and sizes are what the
+        file fixes.</div>
+    </details>
+    </div>
+
+    <div class="anim-only" hidden>
+    <h3>Clip</h3>
+    <input id="aname" type="text" spellcheck="false" placeholder="name">
+    <div class="row">
+      <button id="anew" title="start an empty clip">new</button>
+      <button id="asave" title="write src/js/clips/&lt;name&gt;.js">save</button>
+      <button id="abake" title="render every frame again">bake</button>
+      <button id="afit" title="one frame that holds every pose">fit clip</button>
+    </div>
+    <div id="abytes">—</div>
+    <div id="afiles"></div>
+
+    <h3>Timing</h3>
+    <label class="num">model <select id="amodel"></select></label>
+    <label class="num">mode <select id="amode"></select></label>
+    <div id="asettings"></div>
+    <div id="astats" class="hint">—</div>
+    <details class="help" data-help="clip"><summary></summary>
+      <div class="hint">A clip is <b>one model</b> and a dense table of numbers:
+        one value per animated field per frame. Nothing interpolates at run
+        time, so easing and holds cost the game <b>zero bytes</b> — the tool
+        writes the samples.</div>
+      <div class="hint"><b>fps</b> and <b>mode</b> are for the game to read;
+        neither changes what is baked. March cost is per part per pixel and
+        multiplies by the frame count, so watch the estimate above.</div>
+    </details>
+    </div>
+  </div>
+
+  <div id="center">
+    <!-- The picture and the widgets are two canvases: the render stays a
+         160px image scaled up, while handles are drawn at display resolution
+         and never touch a rendered pixel. -->
+    <!-- SHARED BY THE MODEL AND ANIM TABS. The anim tab poses through this
+         canvas, its gizmo and its camera, which is most of why a clip needed no
+         renderer of its own — main.js hides it for the sheet tab only. -->
+    <div id="stage">
+      <canvas id="display" class="checker"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="row anim-only" id="transport" hidden>
+      <button id="aprev" title="a frame back (,)">◀</button>
+      <button id="aplay" class="tab" title="play / pause (space)">▶</button>
+      <button id="anext" title="a frame on (.)">▶</button>
+      <span id="aframeno">—</span>
+      <label class="num">onion <select id="aonion"></select></label>
+    </div>
+    <div id="astrip" class="anim-only" hidden></div>
+    <!-- The sheet gets the same two layers, for the same reason: the camera
+         cross and the two suns are drawn at display resolution over whichever
+         sprite is selected, and never touch a baked pixel. -->
+    <div id="sheetstage" class="sheet-only" hidden>
+      <canvas id="sheetdisplay" class="checker"></canvas>
+      <canvas id="sheetoverlay"></canvas>
+    </div>
+    <div id="status">booting…</div>
+  </div>
+
+  <div id="right">
+    <div class="anim-only" hidden>
+    <h3>Frame</h3>
+    <label class="num">part <select id="apart"></select></label>
+    <label class="num">animate <select id="aadd"></select></label>
+    <div id="achannels"></div>
+    <details class="help" data-help="channels"><summary></summary>
+      <div class="hint"><b>Move a part with the gizmo</b> and it is keyed at the
+        playhead — every number that moves becomes a channel. There is no record
+        button, because a record button is a mode you forget you are not in.</div>
+      <div class="hint">A number here is that field's value <b>at this
+        frame</b>. Scrub it and only this frame bakes again. <b>×</b> stops
+        animating the field and hands it back to the model.</div>
+      <div class="hint"><b>kind</b> cannot be animated, and neither can a
+        <b>scatter header</b>: its seed and spreads decide the arrangement, and
+        a mass that reshuffles per frame is confetti. Animate the template under
+        it and the whole mass moves together.</div>
+    </details>
+
+    <h3>Rig</h3>
+    <div class="row">
+      <button id="agroupnew" title="a new group holding the selected part">+ group</button>
+      <button id="agroupdel" title="delete the selected group">delete</button>
+      <button id="apivotturn" class="tab on" title="the pivot's rings turn the group">turn</button>
+      <button id="apivotmove" class="tab" title="the pivot's arms place it">place</button>
+    </div>
+    <div id="agroups"></div>
+    <div id="arig"></div>
+    <details class="help" data-help="rig"><summary></summary>
+      <div class="hint">A part rotates about <b>its own centre</b>, so an arm of
+        three parts cannot swing from a shoulder by rotating each of them. A
+        <b>group</b> is a pivot and a list of parts: turn it and the tool writes
+        each part's new centre and rotation into channels.</div>
+      <div class="hint">The group is the <b>editor's</b>. It resolves into plain
+        numbers the moment you turn it, so the format gains no hierarchy and the
+        game pays nothing — the pivot is kept only so you can grab it again.</div>
+      <div class="hint">The orange square on the picture is the pivot.
+        <b>place</b> gives it arms to move it — moving a pivot moves no part —
+        and <b>turn</b> gives it rings, in <b>world</b> axes. It cannot bend or
+        squash a part; a group moves rigid pieces.</div>
+    </details>
+    </div>
+
+    <div class="sheet-only" hidden>
+    <h3>Sprites</h3>
+    <div class="row">
+      <select id="addsprite"><option value="">add sprite…</option></select>
+      <select id="addfacings"><option value="">add 8 facings…</option></select>
+    </div>
+    <div id="sprites"></div>
+    <details class="help" data-help="sprites"><summary></summary>
+      <div class="hint">The index <b>is</b> the sprite id and it is permanent:
+        deleting leaves a tombstone (<code>0</code> in the file) that renders
+        nothing, so a game referencing sprite 17 keeps meaning it.</div>
+    </details>
+
+    <h3>Sprite</h3>
+    <div class="row">
+      <button id="slights" class="tab" title="show this sprite's lights (l)">lights</button>
+      <button id="sflip0" title="send the key light through to the other side, same place on screen">flip key</button>
+      <button id="sflip1" title="send the fill through to the other side, same place on screen">flip fill</button>
+    </div>
+    <div class="row">
+      <button id="srelink" title="point the second light back at the key, and let it follow again">relink</button>
+      <button id="sapplyset" title="copy this sprite's view and lights onto every sprite of the same model">apply to set</button>
+    </div>
+    <div id="sinspector"></div>
+    <details class="help" data-help="sprite"><summary></summary>
+      <div class="hint">A dial shown dim is <b>inherited</b> from the model's own
+        view; edit it to override, <b>↺</b> to inherit again. Eight facings are
+        eight slots holding one number each.</div>
+      <div class="hint"><b>Drag a sprite</b> to turn it, the cross at the bottom
+        left to turn or pan it, and — with <b>lights</b> on — either <b>sun</b>
+        to aim it. The same gestures as the model tab, writing to this slot
+        instead of to the model.</div>
+      <div class="hint"><b>A light aimed here lights one sprite.</b> That is
+        what you want for a prop and wrong for a facing set, where the key would
+        jump as the character turns — aim it once, then <b>apply to set</b>.</div>
+    </details>
+    </div>
+
+    <div class="model-only">
+    <h3>Widget</h3>
+    <div class="row" id="modes">
+      <button id="mode-move" class="tab on" title="move (w)">move</button>
+      <button id="mode-rotate" class="tab" title="rotate (e)">rotate</button>
+      <button id="mode-scale" class="tab" title="shape — the dimensions the primitive reads (r)">shape</button>
+      <button id="mode-lights" class="tab" title="show the lights (l)">lights</button>
+    </div>
+    <details class="help" data-help="widget"><summary></summary>
+      <div class="hint">Drag an <b>arm</b> to act on that axis, or the <b>white
+        dot</b> to move in the plane facing you — which is how a paint-only part
+        is moved, since it has no surface to click. Arms are in the part's OWN
+        frame, and <b>shape</b> edits the dimension the primitive reads rather
+        than any transform. Shift-drag for a slow one. The cross at the bottom
+        left turns the camera; its middle pans.</div>
+      <div class="hint"><b>shape</b> also draws the part's <b>cage</b> — the box
+        its shape actually fills, measured with the same support function that
+        crops sprites in the sheet tab. It is the only picture of a
+        <b>paint-only</b> part, which has no surface, and of a <b>subtract</b>
+        part, where you otherwise see the hole and never the cutter. A cut's
+        cage is warm; everything else is blue. A paint part's cage includes its
+        <b>reach</b>, since that is how far its colour goes.</div>
+      <div class="hint">On the cage: a <b>diamond</b> dilates — it writes the
+        primitive's <b>round</b>, the corner or radius no arm reaches. A
+        <b>square</b> moves one <b>face</b>, and the opposite face stays put:
+        the drag is split between the dimension and the part's position, which
+        is what makes the box adjustable rather than merely scalable.
+        <b>Alt</b>-drag resizes about the centre instead. Faces are only offered
+        where a shape really has two of them — a box and an ellipsoid get all
+        six, a cylinder, cone or prism gets its two end caps, a pyramid gets its
+        base, and a sphere or torus gets none, because there the faces would be
+        one number pretending to be several. A <b>capsule</b> gets two
+        <b>rings</b> on its joints instead: drag one to aim the limb and the
+        other stays put. Its <b>a b c</b> is an axis, not a box, so it has ends
+        rather than faces — and dragging one writes no rotation.</div>
+      <div class="hint"><b>lights</b> puts a sun on each light, and a sun stays
+        <b>under the pointer</b> as you drag it. Past the silhouette it rides the
+        rim. A drag keeps the side the light is on — <b>flip front / back</b> in
+        the View panel sends it through to the other side without moving it on
+        screen, which is how a rim light is made. A sun goes dim when it is back
+        there. They are hidden by default, so they never sit over a part you meant
+        to grab.</div>
+    </details>
+
+    <h3>Parts</h3>
+    <!-- A SCATTER IS NOT A PRIMITIVE, so it does not belong at the bottom of a
+         menu of primitives. It adds two rows rather than one and it is a
+         different kind of thing; it gets its own button. -->
+    <div class="row">
+      <select id="addpart"><option value="">add part…</option></select>
+      <button id="addscatter" title="a header and the template it copies — one row becomes a mass of small parts with jittered numbers, at render time">+ scatter ⁘</button>
+    </div>
+    <div id="parts"></div>
+    <details class="help" data-help="parts"><summary></summary>
+      <div class="hint">Order decides the shape: a part blends with everything
+        before it, and a <b>subtract</b> only removes what is already there.
+        <b>Delete</b> removes the selected part.</div>
+      <div class="hint"><b>Shift-click</b> a row to select several parts —
+        <b>Ctrl-click</b> a part in the picture does the same, since shift there
+        already orbits. The widget then moves, turns and scales them together,
+        about their own centre and about the WORLD's axes. Scale is uniform: a
+        per-axis one would push a world axis into numbers that live in each
+        part's own frame. <b>Escape</b> goes back to one part.</div>
+      <div class="hint"><b>mirror x</b> ⇔ folds the sample across x = 0, so one
+        row is a symmetric pair and costs no extra numbers. A part crossing the
+        plane folds into a chevron — a pair of horns from one row. x is held at 0
+        or above: on the far side there is no half left to mirror.</div>
+      <div class="hint"><b>bake mirror</b> spends a row to turn the fold into a
+        real second part, placed and rotated to match. Do it when the two sides
+        have to move apart: a clip channel writes one row, so a mirrored pair
+        can only ever be animated in step.</div>
+      <div class="hint"><b>scatter</b> ⁘ is two rows — a header, and the template
+        under it that the header copies. The copies are made at render time, so
+        forty pebbles are 26 numbers. The template's own flags reach every copy:
+        subtract for a field of pits, paint for stains, mirror for a symmetric
+        mass. <b>🎲</b> rerolls the arrangement. The pair moves, duplicates and
+        deletes as one. Watch the second number in the status line — march time
+        is linear in it.</div>
+    </details>
+
+    <h3>Part</h3>
+    <div id="inspector"></div>
+    <details class="help" data-help="part"><summary></summary>
+      <div class="hint"><b>Drag any number</b> sideways to scrub it — Shift ×10,
+        Alt ÷10 — or <b>click it to type</b>: Enter commits, Escape puts the old
+        number back. <b>blend</b> is how softly this part melts into the ones
+        before it; 0 is a hard join.</div>
+    </details>
+    </div>
+  </div>
+
+  <script type="module" src="/sdftool/main.js"></script>
+</body>
+</html>

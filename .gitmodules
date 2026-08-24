@@ -1,0 +1,4 @@
+[submodule "tools/soundbox"]
+	path = tools/soundbox
+	url = https://github.com/Rybar/voxby.git
+	branch = synth-v2
