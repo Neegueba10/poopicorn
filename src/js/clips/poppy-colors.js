@@ -2,7 +2,7 @@
 // see src/js/core/sdfanim.js
 import poppy from '../models/poppy.js';
 
-export default [poppy, {scale: 1.4249, vx: -0.0599, vy: 0.2225}, 32, 32, 6, 10, 0, [
+export default [poppy, {scale: 1.42, vx: -0.06, vy: 0.22}, 32, 32, 6, 10, 0, [
   [64, 6, 5, 4, 3, 1, 2],  // part 4, col 12 (mat)
 ]];
 

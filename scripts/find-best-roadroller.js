@@ -22,9 +22,16 @@ rl.question('How many seconds should RoadRoller spend looking for the best confi
   console.log('Building...');
   exec('npm run build:js && npm run build:props', () => {
     console.log(`Spending ${seconds} seconds searching for config...`);
-    exec(`node node_modules/roadroller/cli.mjs ${__dirname}/../dist/game-rollup.js -D -OO`, { timeout: seconds * 1000, killSignal: 'SIGINT', maxBuffer: 4069 * 1024 }, (error, stdout, stderr) => {
+    exec(`node node_modules/roadroller/cli.mjs ${__dirname}/../dist/game-rollup.js -D -OO`, { timeout: seconds * 1000, killSignal: 'SIGINT', maxBuffer: 1024 * 1024 * 1024 }, (error, stdout, stderr) => {
       const bestConfigJs = { allowFreeVars: true };
+      // roadroller marks every new best with '<-'. If the search was killed before
+      // it found one -- or exec truncated stderr -- say so instead of throwing a
+      // TypeError on undefined, which is what a long run used to fail with.
       const bestConfigConsole = stderr.split('\n').reverse().find(line => line.includes('<-'));
+      if (!bestConfigConsole) {
+        console.error('no improvement found. last output was:\n' + stderr.split('\n').slice(-15).join('\n'));
+        process.exit(1);
+      }
       const itemCheckRemoved = bestConfigConsole.split(') ')[1];
       const endSizeRemoved = itemCheckRemoved.split(': ')[0];
       const configPieces = endSizeRemoved.split(' ').filter(param => !param.startsWith('-Sx'));

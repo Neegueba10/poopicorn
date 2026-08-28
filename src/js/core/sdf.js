@@ -1,27 +1,6 @@
 /**
  * sdf.js — signed-distance-field assets, rendered to palette indices.
  *
- * A model is a short list of primitives combined with smooth union and
- * subtraction. Rendering marches a ray per pixel until the field goes small,
- * then shades from the gradient. Why this rather than a rasteriser: ambient
- * occlusion is four extra
- * field evaluations here and is the single biggest reason a render reads as
- * pre-rendered.
- *
- * PORTABILITY CONTRACT, the same terms as noodle.js: this imports ONE sibling,
- * core/quant.js, and nothing else. No DOM, no assumed palette, no assumed
- * resolution. It runs in a Worker and in Node. Its whole input is
- * (w, h, paletteRGB, model, materials, view) and its whole output is a
- * Uint8Array of palette indices. Host adapters live elsewhere.
- *
- * THE SURFACE IS DELIBERATELY NOODLE'S — begin/step/done/col — so the worker,
- * the pool and the progressive boot bake drive either renderer without
- * knowing which they have.
- *
- * ORTHOGRAPHIC on purpose. Pre-rendered sprite art is orthographic, which is
- * most of why it reads as pre-rendered, and it costs less code than
- * perspective: one ray direction for the whole frame, no divide, no near
- * plane, no clipping.
  */
 import { buildRgbLut, BAYER } from './quant.js';
 

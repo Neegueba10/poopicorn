@@ -57,7 +57,8 @@ const FARM = [[PROPS, [...clipSheet(poppyColors), ...clipSheet(pegacornFly),
 const FLOWER0 = 2, BLOOM = 2, DEAD = 4;
 const FLOWER_Y = 9; // sprite centre above the plot; the frame's foot is empty
 const PEGAPOO = 5;
-const PEGAPOO_BIG = 6; // the same pile at 96px, for the title screen
+const PEGAPOO_BIG = 6; // the same pile at 128px, for the title screen
+const ICON_POO = 7, ICON_POPPY = 8; // the same two at 12px, for the meters
 const PEGAPOO_Y = 8; // sprite centre above the pile's resting point (p.y + 2)
 const POO_DX = 15; // how far a pile lands from the plot it came off, px
 
@@ -259,10 +260,23 @@ const SPAWN_GAP = 1.8; // s between spawns inside a wave
 const LIVE0 = 2, LIVE_W = 2;
 const liveCap = () => LIVE0 + wave / LIVE_W;
 
-// The farm is only lost after this long with nothing in bloom. Pegacorns idle
-// when there is no crop, so the comeback is real: every stump is still
-// sprayable and one bloom resets the clock. Losing on the frame the last bloom
-// went down ended three-minute waves on a hard cut.
+// A METER, NOT A SWITCH, and that is the whole late game. It used to refill to
+// full the instant anything was in bloom, so the only thing survival actually
+// asked was that you touch a plot once every GRACE seconds — which is why a
+// player could park on two plots at the bottom of the map and grind wave 18
+// down for ever. Every escalation the game has (eatTime, liveCap, DARK_SPD,
+// stacking eaters) pushes on the STANDING BLOOM COUNT, and a boolean sampled
+// off that count threw all of it away.
+//
+// So: a bloom on the field wins the clock back at a second per second, an empty
+// farm spends it at the same rate, and the loss is the meter reaching zero. The
+// requirement becomes THE FARM MUST BE IN BLOOM MORE THAN HALF THE TIME, which
+// is the same sentence at every wave and gets harder on its own as the flock
+// eats faster. Nothing here scales with the wave — it does not need to.
+//
+// Early waves never see it: 15 blooms against 1-5 pegacorns pins the meter at
+// full. It only bites once the flock can strip the farm faster than the hose
+// puts it back, which is exactly where the difficulty used to stop.
 const GRACE = 8;
 
 // The pop is CROWD CONTROL as well as money. Anything this close loses the
@@ -391,9 +405,19 @@ function blooms() {
   return flowers.filter(f => f.s === BLOOM);
 }
 
+// BEST OF TWO DRAWS, FARTHER FROM THE FARMER WINS. Uniform picking made
+// camping strictly better: strip the farm to two plots at your feet and the
+// whole flock flies to your hose for free, so concurrency became a delivery
+// rate rather than a threat.
+//
+// It is NOT a stripped-farm punishment, which is the shape that failed when
+// targets were claimed — with two blooms both under the player this does
+// nothing at all. It bites only once the meter forces a WIDE farm, and what it
+// costs then is the player's travel, not the flock's eat rate. A term that
+// punishes standing still, not a term that punishes being behind.
 function retarget(u) {
-  const b = blooms();
-  u.tgt = b.length ? b[(Math.random() * b.length) | 0] : null;
+  const b = blooms(), p = () => b[Math.random() * b.length | 0], a = p(), c = p();
+  u.tgt = b.length ? (Math.abs(a.x - px) > Math.abs(c.x - px) ? a : c) : null;
 }
 
 function unlatch() {
@@ -491,11 +515,28 @@ function pop(u) {
 }
 
 // A full-spectrum ring, thrown outward. One per state a poppy gains back.
+//
+// FLAG 1, WHICH IS THE RISER BIT, AND IT IS DOING TWO JOBS HERE. It buys no
+// gravity and no drag, so a ray leaves at full speed and holds it until the
+// alpha runs out — the burst punches out instead of arcing over and sagging,
+// which is what made a revive read as a puff rather than as a payoff. The
+// gravity term is shared with the pop's 90-piece shell, so it could not be
+// turned down globally; the per-particle flag is the only lever that reaches
+// one and not the other.
+//
+// Its second job is the colour. The draw runs the hue as a FALLING spark ages
+// and leaves a riser's alone — and this ring already hands every ray its own
+// angle-matched hue, so holding it is what makes the thing a spectrum starburst
+// instead of 36 pieces all cycling through the same wheel together.
+//
+// The up-bias on vy survives with no gravity to cancel it, so the whole ring
+// drifts up as it expands. On a plot coming back into bloom that is the right
+// direction.
 function rainbow(x, y, n, speed, life) {
   for (let i = 0; i < n; i++) {
     const a = i / n * Math.PI * 2, v = speed * (0.6 + Math.random() * 0.7);
     spawnParticle(x, y, Math.cos(a) * v, Math.sin(a) * v - speed * 0.3,
-      i / n * 360 | 0, life, 0);
+      i / n * 360 | 0, life, 1);
   }
 }
 
@@ -596,7 +637,12 @@ function stepHose(h) {
   }
 
   const tip = hose[activeN - 1];
-  if (hoseState === LATCH) { tip.x = latched.x; tip.y = latched.y; }
+  // IN BY THE TAIL. The tip used to pin to the pegacorn's centre, so the hose
+  // read as skewering it through the middle whichever way it was pointing.
+  // Offset against `facing` and it lands on the rear of a 70x46 frame — and
+  // because the sprite is mirrored off that same flag, the joint stays at the
+  // back end through every thrash that flips it.
+  if (hoseState === LATCH) { tip.x = latched.x - latched.facing * 18; tip.y = latched.y + 3; }
 
   for (let it = 0; it < 3; it++) {
     for (let i = 0; i < activeN - 1; i++) {
@@ -621,7 +667,13 @@ function stepHose(h) {
     const rope = Math.hypot(dxr, dyr) || 1;
     const excess = rope - REACH;
     if (excess > 0) {
-      const F = excess * PULL;
+      // A DARK ONE HAULS. It already flies at DARK_SPD, and the same number is
+      // reused rather than a second constant — the packer pays almost nothing
+      // for a repeat, and "a black one is 1.6x the animal" is one rule instead
+      // of two. Felt on the rope: it drags the farmer off a ledge where a white
+      // one only leans on them, so the late flock changes how a latch plays and
+      // not just how fast it arrives.
+      const F = excess * PULL * (u.lit ? 1 : DARK_SPD);
       kickX += dxr / rope * F * h;
       vy += dyr / rope * F * h;
       u.vx -= dxr / rope * F * 0.1 * h;
@@ -666,8 +718,8 @@ function stepHose(h) {
         f.wiltT = WILT;
         tank -= SPRAY_COST;
         hoseT = SPRAY_CD;
-        rings.push({ x: f.x, y: f.y - 6, t: 0.25, d: 0.25, r: 12 });
-        rainbow(f.x, f.y - 10, 36, 70, 0.7);
+        rings.push({ x: f.x, y: f.y - 6, t: 0.25, d: 0.25, r: 40 });
+        rainbow(f.x, f.y - 10, 36, 190, 0.6);
         // A step up the scale per state, so a plot you bring all the way back
         // from dead plays three rising notes and the bloom is the top one.
         playSound(bank[POWERUP], 1 + f.s * 0.3, 0, 0.3);
@@ -769,8 +821,13 @@ function stepUni(u, h) {
     u.thrashT -= h;
     if (u.thrashT <= 0) {
       u.thrashT = 0.3 + Math.random() * 0.3; // s between thrash impulses
-      u.vx += (Math.random() * 2 - 1) * 180; // sideways kick, px/s
-      u.vy += (Math.random() * 2 - 1) * 120; // vertical kick, px/s
+      // A DARK ONE FIGHTS HARDER, on the same 1.6 the rest of it runs on — so
+      // 288 sideways and 192 up, which is a bucking animal against a white
+      // one's shrug. Written out twice rather than lifted into a local: the
+      // packer pays almost nothing for a repeated phrase it has already met on
+      // the rope tension, where a new name is real entropy in a new context.
+      u.vx += (Math.random() * 2 - 1) * 240 * (u.lit ? 1 : DARK_SPD); // sideways kick, px/s
+      u.vy += (Math.random() * 2 - 1) * 160 * (u.lit ? 1 : DARK_SPD); // vertical kick, px/s
     }
   }
 
@@ -892,6 +949,12 @@ function stepMenu() {
     // The clearing bonus is not paid at once: the surviving blooms are queued
     // and counted off one at a time into the score, missile-command style.
     score += BLOOM_BONUS * blooms().length;
+    // AND THE CLOCK IS GIVEN BACK. The farm keeps running behind the panel but
+    // the menu eats `fire`, so a wave cleared on an empty field used to hand
+    // the player a draining meter and no spray to answer it with — a loss on
+    // the shop screen, with REPLANT the only out. Clearing the wave is the
+    // thing that earns the reset.
+    graceT = GRACE;
   }
   if (inp.nav) sel = (sel + 4 + inp.nav) % 4;
   if (inp.fireEdge) {
@@ -985,7 +1048,13 @@ function stepPlay(h) {
   // visible and the stage before the pop is the highest.
   if (hoseState === LATCH && latched && inp.fire && tank >= PUMP_COST
     && (hoseT -= h) <= 0) {
-    hoseT = pumpCd();
+    // A DARK ONE TAKES 1.6 TIMES AS LONG TO FILL, on the same number as its
+    // speed, its haul and its thrash. The cadence and not the stage count:
+    // STAGES is 7 for everything, so a pop still looks like a pop and the
+    // inflate clip still runs its six frames — what changes is how long you
+    // are stood there holding a bucking animal to get it. Time on the rope IS
+    // the fight, and the fight is the thing that was over too quickly.
+    hoseT = pumpCd() * (latched.lit ? 1 : DARK_SPD);
     tank -= PUMP_COST;
     latched.stage++;
     playSound(bank[PUMP], 1 + latched.stage * 0.06, 0, 0.4);
@@ -1023,8 +1092,7 @@ function stepPlay(h) {
     if (f.wiltT <= 0) f.dead = true;
   }
 
-  if (blooms().length) graceT = GRACE;
-  else if ((graceT -= h) <= 0) mode = 1;
+  if ((graceT = clamp(graceT + (blooms().length ? 1 : -1) * h, 0, GRACE)) <= 0) mode = 1;
 
   // Wave loop: spawn the queue against the concurrency cap, then rest until
   // the field is clear. The gap timer only runs while there is room, so the
@@ -1129,7 +1197,13 @@ export default {
   init(o) {
     ({ ctx, W, H, keys } = o);
     font = bakeFont('#cfd3da');
-    big = bakeFont('#fff', 2);
+    // SCALE 3, and `big` is every oversized string the game draws: the title
+    // card, the loading card, the LAST POPPY warning and the score. A fourth
+    // atlas for the logo alone would have cost a bake, a global and a second
+    // centring helper for one string; stepping the one that exists costs a
+    // character, and the three it carries along all wanted to be louder —
+    // a 9x27 glyph is a logo, a readable emergency, and a score worth reading.
+    big = bakeFont('#fff', 3);
 
     // The farm layout is stage data: AABBs become the platform list, the
     // tagged objects become the poppy plots.
@@ -1141,6 +1215,34 @@ export default {
     eachObject(FARM, (ix, x, y) => {
       if (kvOf(FARM, ix, 'plot')) plots.push([x, y]);
     });
+
+    // A KEY CHANGE BUYS THE SECOND HALF OF THE TRACK FOR NOTHING.
+    //
+    // The song is N song-positions long and every one of them points at the
+    // same 32-row pattern, so the tune the player hears is one pattern played
+    // four times. What the format actually stores per channel is a COLUMN LIST
+    // and a SEQUENCE of 1-based indices into it — which means a second key does
+    // not cost a second tune. Push a transposed copy of every column, point a
+    // second lap of the sequence at the copies, and the generator walks twice
+    // as far through data that grew by one array of 32 small integers.
+    //
+    // `v && v + 5` is the whole transposition, and the guard is load-bearing:
+    // a 0 in `n` is a REST, not a note at the bottom of the range, and adding
+    // to it would fill every silent row in the track with a bass note. Up a
+    // fourth, so the loop back to the original key lands as a plagal drop
+    // rather than a lurch; 7 for a fifth or 2 for a gear change, if you'd
+    // rather. The fx column is shared by reference — effects are not pitched.
+    //
+    // Priced honestly: the generator sizes its buffer off endPattern, so this
+    // doubles both the synthesis time behind the loading bar and the PCM the
+    // track occupies. Sixteen seconds of music becomes thirty-two.
+    const N = song.endPattern + 1;
+    for (const ins of song.songData) {
+      const m = ins.c.length;
+      ins.c.push(...ins.c.map(k => ({ n: k.n.map(v => v && v + 5), f: k.f })));
+      for (let j = 0; j < N; j++) ins.p[N + j] = ins.p[j] && ins.p[j] + m;
+    }
+    song.endPattern += N;
 
     // Sprites and sounds render together behind one loading bar.
     art = stageBaker(FARM, o.pal);
@@ -1160,6 +1262,7 @@ export default {
       return;
     }
     if (!started || mode) {
+      time += dt / 1e3;
       if (mode ? inp.retry : inp.fireEdge) action();
       return;
     }
@@ -1179,18 +1282,64 @@ export default {
     if (loading || !started) {
       c.fillStyle = '#1a0a2e';
       fr(0, 0, W, H);
-      if (loading) {
-        bctr('POOPICORN', 100);
-        c.fillStyle = '#2a3038';
-        fr(180, 140, 120, 8);
-        c.fillStyle = '#fff';
-        fr(180, 140, 120 * (art.progress() + soundsReady / totalSounds) / 2, 8);
-      } else {
-        // The pile is the logo. Only here — while `loading` the sheet it comes
-        // off has not been baked yet.
-        sprite(PEGAPOO_BIG, W / 2, 100, 0, PROP_SRC);
-        bctr('POOPICORN', 158);
+      // A PINWHEEL BEHIND THE LOGO, one shade off the ground it sits on.
+      // THIRTEEN strokes out of the pile's own centre, half a radian apart.
+      // Twelve was the obvious number and left a 0.28 rad wedge unlit out at
+      // 3 o'clock, well clear of the pile; the thirteenth overlaps the first
+      // instead, which nothing can see. 500 px is longer than the
+      // diagonal, so every ray runs off the frame and none of them ends in
+      // mid-air. The slow term on the angle turns the fan about once a minute.
+      //
+      // Drawn ahead of both branches, so the loading card gets it too: the
+      // wordmark and the rays come up first and the pile lands into them.
+      // THE SKY'S OWN MID STOP, not a new purple. `#331358` is already in the
+      // bundle as the middle of the in-game gradient, and a colour the packer
+      // has met costs a fraction of a novel one — a hex literal is seven
+      // characters of near-pure entropy the first time and nearly free the
+      // second. It reads a shade lighter than the card, which is the brief.
+      c.strokeStyle = '#2a1148';
+      // A BEGIN AND A STROKE PER RAY, which measured 4 bytes CHEAPER than one
+      // path of twelve subpaths. The packer is context-mixing: this exact
+      // bp/mv/ln/st sequence is what the hose and the particle trails already
+      // spell, so a thirteenth repeat of it costs almost nothing, where the
+      // tighter structure is a shape it has never seen. Brevity is not the
+      // objective function here; predictability is.
+      c.lineWidth = 9;
+      for (let i = 13; i--;) {
+        const a = i / 2 + time / 9;
+        bp();
+        mv(W / 2, 100);
+        ln(W / 2 + Math.cos(a) * 500, 100 + Math.sin(a) * 500);
+        st();
       }
+      // The width is left at 9 on purpose. Nothing else on this card strokes,
+      // and the play draw's first stroke is the hose, which sets its own — as
+      // do the particles and the rings behind it. A reset here would be a line
+      // spent restoring state that no reader ever observes.
+      // The pile is the logo. Only once the sheet it comes off has been baked.
+      // A SLOW BOB, and it is the only motion on the screen besides the blink.
+      // The pile is baked at one size and drawn 1:1 — scaling it with the
+      // context would cost a save/restore and resample a sprite rendered for
+      // exactly these pixels — so `sprite` stays untouched and the logo is made
+      // bigger where it is made: in the sheet.
+      if (!loading) sprite(PEGAPOO_BIG, W / 2, 100 + Math.sin(time * 2) * 4, 0, PROP_SRC);
+      // ONE WORDMARK FOR BOTH SCREENS, and it is not only the cheaper spelling.
+      // The loading card used to set it at 100 and the title card at 176, so
+      // the logo JUMPED at the moment the bake finished. Drawn once, outside
+      // the branch, the card fills in around a title that never moves: first
+      // the stars and the word, then the pile above it and the prompt below.
+      bctr('POOPICORN', 176);
+      if (loading) {
+        c.fillStyle = '#2a3038';
+        fr(180, 214, 120, 8);
+        c.fillStyle = '#fff';
+        fr(180, 214, 120 * (art.progress() + soundsReady / totalSounds) / 2, 8);
+        // The same blink idiom as the LAST POPPY warning, deliberately — a
+        // repeat costs the packer almost nothing, where a novel wall clock
+        // (Date.now) measured 27 bytes over budget on its own. It works here
+        // only because update() advances `time` in the !started branch now;
+        // step() never runs on this screen, so `time` used to be frozen at 0.
+      } else if ((time * 2 | 0) % 2) ctr('PRESS SPACE', 220);
       return;
     }
 
@@ -1361,13 +1510,41 @@ export default {
       c.globalAlpha = 1;
     }
 
+    // TWO METERS, ONE LANGUAGE. The grace clock stopped being a countdown the
+    // moment it started refilling off the standing bloom count — it is the
+    // farm's health, and it was the only resource in the game with no bar. A
+    // thinner one sits under the tank because it is the one you lose to.
+    //
+    // THE HUE IS THE VALUE, which is why this costs almost nothing. A flat fill
+    // plus a `low` test is a colour constant, a threshold and a branch; a hue
+    // driven straight off the number is one expression that ramps green through
+    // amber to red continuously, with no cliff to tune and no second string for
+    // the packer to learn. Both bars run the same 70/60 hsl the particles do.
+    // `tank * 1.2` and `graceT * 15` are each just "full = 120 = green".
+    // ONE PLATE FOR THE BLOCK, bled off the top and left edges rather than
+    // floated inside them — a panel that touches two sides reads as part of
+    // the frame, where an inset one reads as a sticker sat on the farm. It is
+    // also a rect fewer than a backing per bar.
+    // The empty half of each meter is this showing through — exactly what the
+    // two backings drew — and the icons get something to sit on, which they
+    // needed: a 12 px sprite over the top-left island was unreadable.
     c.fillStyle = '#2a3038';
-    fr(8, 9, 86, 6);
-    c.fillStyle = '#7fd67f';
-    fr(8, 9, 86 * tank / TANK_MAX, 6);
+    fr(0, 0, 102, 38);
+    c.fillStyle = `hsl(${tank * 1.2},70%,60%)`;
+    fr(24, 8, 70 * tank / TANK_MAX, 6);
+    // A SHADE DARKER than the tank's 60%, and that is the whole separation.
+    // Both meters run out and both should say so the same way, so they keep
+    // one hue ramp and differ in weight instead — otherwise a full farm and a
+    // full tank are the same green and read as one two-tone block.
+    c.fillStyle = `hsl(${graceT * 15},70%,48%)`;
+    fr(24, 26, 70 * graceT / GRACE, 4);
+    sprite(ICON_POO, 15, 11, 0, PROP_SRC);
+    sprite(ICON_POPPY, 15, 28, 0, PROP_SRC);
     // The farm is down but not gone. A countdown the player can still beat:
-    // one spray anywhere on the field resets it.
-    if (graceT < GRACE && (time * 6 | 0) % 2) bctr(`LAST POPPY ${Math.ceil(graceT)}`, H / 2 - 40);
+    // blooms buy it back. The bar above carries the whole slope now, so this
+    // is no longer the warning — it is the emergency, and it waits until the
+    // last three seconds rather than blinking through every late wave.
+    if (graceT < 3 && (time * 6 | 0) % 2) bctr(`LAST POPPY ${Math.ceil(graceT)}`, H / 2 - 40);
 
     // BLOOMS is the health bar and PESTS is the win condition, and they sit
     // together because the player's instinct is to read only the first one.

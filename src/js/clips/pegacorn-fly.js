@@ -2,13 +2,13 @@
 // see src/js/core/sdfanim.js
 import pegacorn from '../models/pegacorn.js';
 
-export default [pegacorn, {scale: 1.3129, vx: 0.1821, vy: 0.0194}, 70, 46, 4, 10, 0, [
-  [4, -0.095, -0.144, -0.196, -0.151],  // part 0, col 4 (rx)
-  [2, 0.238, 0.212, 0.055, 0.193],  // part 0, col 2 (y)
-  [3, -0.09, -0.118, -0.205, -0.137],  // part 0, col 3 (z)
-  [1, 0.26, 0.265, 0.292, 0.269],  // part 0, col 1 (x)
-  [6, 0, 0, -0.029, -0.008],  // part 0, col 6 (rz)
-  [5, 0.105, 0.105, 0.099, 0.105],  // part 0, col 5 (ry)
+export default [pegacorn, {scale: 1.32, vx: 0.18, vy: 0.02}, 70, 46, 4, 10, 0, [
+  [4, -0.1, -0.14, -0.2, -0.16],  // part 0, col 4 (rx)
+  [2, 0.24, 0.2, 0.06, 0.2],  // part 0, col 2 (y)
+  [3, -0.08, -0.12, -0.2, -0.14],  // part 0, col 3 (z)
+  [1, 0.26, 0.26, 0.28, 0.28],  // part 0, col 1 (x)
+  [6, 0, 0, -0.04, 0],  // part 0, col 6 (rz)
+  [5, 0.1, 0.1, 0.1, 0.1],  // part 0, col 5 (ry)
 ]];
 
 /** The editor's copy: the groups and their pivots, which resolved into the

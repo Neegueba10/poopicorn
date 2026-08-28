@@ -6,9 +6,9 @@ import creature from '../models/creature.js';
 // held straight out to carry the hose; 12 is both arms overhead, for hanging off
 // a latched pegacorn. poppy.js picks the block and cycles inside it.
 //
-// THE ARMS SWING 3x THE EDITOR'S NUMBERS. Both arm rx channels were +-0.03
+// THE ARMS SWING 3x THE EDITOR'S NUMBERS. Both arm rx channels were +-0.04
 // turns, which is 10.8 degrees about the arm's own centre — under half of what
-// the legs do, so at 32x45 px the walk read as a shuffle. They are +-0.09 now,
+// the legs do, so at 32x45 px the walk read as a shuffle. They are +-0.08 now,
 // 32.4 degrees, past the legs' 23.8. Rotation is about the part's OWN CENTRE
 // and rx turns y into z, so a bigger angle throws the hand forward and the
 // shoulder back without moving the arm sideways off the torso. The near arm
@@ -19,12 +19,12 @@ import creature from '../models/creature.js';
 // channel that writes the value already in the model is 13 numbers doing
 // nothing. Part 5's x, y and z existed only to throw the far leg to the wrong
 // side of the body on frame 1, which read as a glitch, not a step.
-export default [creature, {yaw: 0.25, scale: 1.3726, vx: 0.0732}, 32, 45, 13, 10, 0, [
-  [56, 0.02, 0.066, 0.04, -0.02, -0.06, -0.04, 0.02, 0.066, 0.04, -0.02, -0.06, -0.04, 0],  // part 4, col 4 (rx)
+export default [creature, {yaw: 0.24, scale: 1.36, vx: 0.08}, 32, 45, 13, 10, 0, [
+  [56, 0.02, 0.08, 0.04, -0.02, -0.06, -0.04, 0.02, 0.08, 0.04, -0.02, -0.06, -0.04, 0],  // part 4, col 4 (rx)
   [69, -0.02, -0.06, -0.04, 0.02, 0.06, 0.04, -0.02, -0.06, -0.04, 0.02, 0.06, 0.04, 0],  // part 5, col 4 (rx)
-  [30, -0.02, -0.09, -0.06, 0.02, 0.09, 0.06, 0, 0, 0, 0, 0, 0, 0],  // part 2, col 4 (rx)
-  [43, 0.02, 0.09, 0.06, -0.02, -0.09, -0.06, 0.02, 0.09, 0.06, -0.02, -0.09, -0.06, 0],  // part 3, col 4 (rx)
-  ['vy', 0.0175, -0.0225, 0.0175, 0.0175, -0.0225, 0.0175, 0.0175, -0.0225, 0.0175, 0.0175, -0.0225, 0.0175, 0.0175],
+  [30, -0.02, -0.08, -0.06, 0.02, 0.08, 0.06, 0, 0, 0, 0, 0, 0, 0],  // part 2, col 4 (rx)
+  [43, 0.02, 0.08, 0.06, -0.02, -0.08, -0.06, 0.02, 0.08, 0.06, -0.02, -0.08, -0.06, 0],  // part 3, col 4 (rx)
+  ['vy', 0.02, -0.02, 0.02, 0.02, -0.02, 0.02, 0.02, -0.02, 0.02, 0.02, -0.02, 0.02, 0.02],
   [28, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.42],  // part 2, col 2 (y)
   [29, 0, 0, 0, 0, 0, 0, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0],  // part 2, col 3 (z)
   [33, -0.14, -0.14, -0.14, -0.14, -0.14, -0.14, 0, 0, 0, 0, 0, 0, -0.14],  // part 2, col 7 (a)
@@ -39,8 +39,8 @@ export default [creature, {yaw: 0.25, scale: 1.3726, vx: 0.0732}, 32, 45, 13, 10
  * export, so a game that imports the default only never pays for it —
  * verified at 0 B. */
 export const rig = {groups: [
-  {name: 'near leg', pivot: [-0.17, -0.52, 0], parts: [4]},
-  {name: 'far leg', pivot: [0.17, -0.52, 0], parts: [5]},
+  {name: 'near leg', pivot: [-0.16, -0.52, 0], parts: [4]},
+  {name: 'far leg', pivot: [0.16, -0.52, 0], parts: [5]},
   {name: 'near arm', pivot: [-0.38, 0.02, 0], parts: [2]},
   {name: 'far arm', pivot: [0.38, 0.02, 0], parts: [3]},
 ]};

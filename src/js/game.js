@@ -21,21 +21,27 @@ import Game from './games/poppy.js';
 
 const W = 480, H = 270;
 
-document.body.style = 'margin:0;background:#000;overflow:hidden;height:100vh';
+document.body.style = 'margin:0;background:#000;overflow:hidden;height:100vh;display:grid;place-items:center';
 
-const canvas = document.createElement('canvas');
+// The canvas is IN index.html, not built here. An element with an id is also
+// a global under that name, so `g` IS the element — no createElement, no
+// getElementById, and no append call at the bottom. It also has to be a real
+// element rather than a built one for a second reason: inline-html.js strips
+// the <body> line, so whatever is in the markup is the only thing that opens
+// a <body> for this script to attach to. Building the canvas here left the
+// document with nothing but <script>, and document.body came back null.
+const canvas = g;
 canvas.width = W;
 canvas.height = H;
 // The low-resolution look, in two lines: never resample, and scale by whole
 // numbers so a pixel stays a square.
 canvas.style.imageRendering = 'pixelated';
-// Set HERE and not in index.html's CSS: a comment in this file is free (terser
-// strips it) but every byte of the CSS survives into the zip. Same reason
-// there is no `canvas{display:block}` rule — the canvas is a flex item of the
-// centring section, and a flex item is blockified anyway — and no html/BODY
-// rule, since the body style is assigned above. Do not put the six-letter word
-// for <body> in index.html either: scripts/inline-html.js drops every LINE
-// containing it, which silently mangled a CSS comment that mentioned it.
+// Set HERE and not in a stylesheet: a comment in this file is free (terser
+// strips it) but every byte of CSS survives into the zip. index.html carries
+// no <style> at all now — the centring lives in the body style above, and the
+// canvas needs no display:block because a grid item is blockified anyway.
+// Do not put the six-letter word for <body> in index.html: inline-html.js
+// drops every LINE containing it, which once silently mangled a CSS comment.
 const fit = () => {
   const s = Math.max(1, Math.min(innerWidth / W, innerHeight / H) | 0);
   canvas.style.width = W * s + 'px';
@@ -43,10 +49,6 @@ const fit = () => {
 };
 onresize = fit;
 fit();
-// Into the section index.html centers, like game-retro.js — a canvas
-// appended to the flex BODY sits beside the full-width section and pushes
-// half the game off screen.
-document.getElementById('game').append(canvas);
 
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
