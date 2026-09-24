@@ -1,4 +1,8 @@
 ---
+genres:
+  - action
+  - shooter
+  - survival
 directors_cut: https://ryanmalm.neocities.org/poopicorn
 video: https://youtu.be/otG60lfWCR0
 # See github.com/js13kGames/hello-world for supported frontmatter
